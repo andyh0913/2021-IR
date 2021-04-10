@@ -6,20 +6,25 @@ import xml.etree.ElementTree as ET
 from functools import reduce
 from itertools import compress, repeat
 import numpy as np
+cimport numpy as np
 from tqdm import tqdm
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 
-alpha = 2.5
+alpha = 8
 beta = 1
-r = 6
+gamma = 0
+r = 7
+ir = 0
 g = 100
-k1 = 1
-k3 = 100
-b = 0.75
+k1 = 3.5 # 1-2
+k3 = 100 # 0-1000
+b = 0.75 # 0.75
 
 class Retriever:
     def __init__(self, relevance, input_path, output_path, model_path, dir_path):
         self.eps = 1e-12
+        self.relevance = relevance
+        self.output_path = output_path
         self.build_vocab(model_path) # Must be called first
         self.build_doc_list(model_path, dir_path)
         self.build_stopword_list('model/stopwords')
@@ -76,6 +81,8 @@ class Retriever:
         # self.doc_size = len(file_list)
         self.doc_list = []
         self.doc_id_list = []
+        self.doc_title_ids = []
+        self.doc_title_tfs = []
         doc_length = []
         for i, file_path in enumerate(tqdm(file_list)):
             doc_tree = ET.parse(os.path.join(dir_path, file_path.strip()))
@@ -136,9 +143,6 @@ class Retriever:
         for i in tqdm(range(self.doc_size)):
             self.doc_ids[i] = np.array(self.doc_ids[i])
             self.doc_tfs[i] = np.array(self.doc_tfs[i])
-            # p = self.doc_ids[i].argsort()
-            # self.doc_ids[i] = self.doc_ids[i][p]
-            # self.doc_tfs[i] = self.doc_tfs[i][p]
             length = self.doc_tfs[i].sum()
             if length == 0:
                 self.doc_ids[i] = np.array([0])
@@ -173,20 +177,23 @@ class Retriever:
     def pre_qtf(self, index):
         return (k3+1)*self.query_tfs[index]/(k3+self.query_tfs[index])
 
-    def cal_bm25_score(self, qids, qtfs, ids, tfs):
-        inter_vocabs = np.intersect1d(qids, ids)
-        inter_ids = np.in1d(ids, qids)
-        inter_qids = np.in1d(qids, ids)
-        # print(inter_vocabs.dtype, inter_ids.dtype, inter_qids.dtype)
-        # try:
-        #     score = np.log((self.doc_size-self.doc_df[inter_vocabs]+0.5)/(self.doc_df[inter_vocabs]+0.5)) * (k1+1)*tfs[inter_ids]/(k1*(1-b)+b*dl/avdl+tfs[inter_ids]) * (k3+1)*qtfs[inter_qids]/(k3+qtfs[inter_qids])
-        # except:
-        #     print(qids.dtype, qids)
-        #     print(ids.dtype, ids)
+    def cal_bm25_score(self,    np.ndarray[np.int_t, ndim=1] qids, \
+                                np.ndarray[np.float_t, ndim=1] qtfs, \
+                                np.ndarray[np.int_t, ndim=1] ids, \
+                                np.ndarray[np.float_t, ndim=1] tfs):
+        cdef int p1=0, p2=0
+        cdef int len1 = qids.shape[0], len2 = ids.shape[0]
+        cdef double score = 0
+        while p1 < len1 and p2 < len2:
+            if qids[p1] < ids[p2]:
+                p1 += 1
+            elif qids[p1] > ids[p2]:
+                p2 += 1
+            else:
+                score += self.doc_df_bm25[qids[p1]] * tfs[p2] * qtfs[p1]
+                p1 += 1
+                p2 += 1
 
-        score = self.doc_df_bm25[inter_vocabs]*tfs[inter_ids]*qtfs[inter_qids]
-
-        score = score.sum()
         return score
 
     def build_query_tfidf(self):
@@ -216,11 +223,12 @@ class Retriever:
 
     def get_query_score(self):
         self.query_score = np.zeros((self.query_size, self.doc_size))
-        if args.relevance:
+        if self.relevance:
             print("Calculating query scores...")
             self.precal_bm25_terms()
             for i in tqdm(range(self.query_size)):
-                self.query_score[i] = np.fromiter(map(self.cal_bm25_score, repeat(self.query_ids[i]), repeat(self.query_tfs_bm25[i]), tqdm(self.doc_ids), self.doc_tfs_bm25), dtype=float)
+                self.query_score[i] = np.array([self.cal_bm25_score(self.query_ids[i], self.query_tfs_bm25[i], self.doc_ids[doc], self.doc_tfs_bm25[doc]) for doc in tqdm(range(self.doc_size))])
+                # self.query_score[i] = np.fromiter(map(self.cal_bm25_score, repeat(self.query_ids[i]), repeat(self.query_tfs_bm25[i]), tqdm(self.doc_ids), self.doc_tfs_bm25), dtype=float)
             max_scores = self.query_score.max(axis=-1)
             self.result = np.argsort(self.query_score, axis=-1)[:,::-1]
             print("Done!")
@@ -240,16 +248,24 @@ class Retriever:
             
             for i in tqdm(range(self.query_size)):
                 relevant_num = filter_ids[i].sum()
+                irrelevant_num = ir
                 relevant_query_ids = np.array([], dtype=int)
                 relevant_query_tfs = np.array([], dtype=float)
+                irrelevant_query_ids = np.array([], dtype=int)
+                irrelevant_query_tfs = np.array([], dtype=float)
                 for j in range(relevant_num):
                     relevant_query_ids, relevant_query_tfs = self.add_numpy_bow(relevant_query_ids, relevant_query_tfs, self.doc_ids[self.result[i][j]], self.doc_tfs[self.result[i][j]])
+                for j in range(-1,-irrelevant_num-1,-1):
+                    irrelevant_query_ids, irrelevant_query_tfs = self.add_numpy_bow(irrelevant_query_ids, irrelevant_query_tfs, self.doc_ids[self.result[i][j]], self.doc_tfs[self.result[i][j]])
+                
                 # relevant_query = reduce(self.add_numpy_bow, compress(self.doc_ids, filter_ids[i]), compress(self.doc_tfs, filter_ids[i]))
                 # relevant_query = []
                 # for j in range(relevant_num):
                 #     relevant_query = self.add_bow_list(relevant_query, self.doc_weight[self.result[i][j]])
                 # self.query_weight[i] = self.add_bow_list(self.query_weight[i], relevant_query, alpha, beta/relevant_num)
                 self.query_ids[i], self.query_tfs[i] = self.add_numpy_bow(self.query_ids[i], self.query_tfs[i]*alpha, relevant_query_ids, relevant_query_tfs*beta/relevant_num)
+                self.query_ids[i], self.query_tfs[i] = self.add_numpy_bow(self.query_ids[i], self.query_tfs[i], irrelevant_query_ids, -irrelevant_query_tfs*gamma/irrelevant_num)
+            
             print("Rocchio Feedback done!")
 
         print("Calculating query scores...")
@@ -268,14 +284,13 @@ class Retriever:
             for i in range(self.query_size):
                 filter_ids[i][:g] = True
 
-        fig, axs = plt.subplots(self.query_size)
-        fig.suptitle("top 100 query scores")
+        # fig, axs = plt.subplots(self.query_size)
+        # fig.suptitle("top 100 query scores")
+        # for i in range(self.query_size):
+        #     axs[i].bar(np.arange(100), sorted_score[i][:100])
+        # plt.savefig(f"{alpha}_{beta}_{r}_{g}_{k1}_{k3}_{b}_{args.output_path}.png")
         
-        for i in range(self.query_size):
-            axs[i].bar(np.arange(100), sorted_score[i][:100])
-        plt.savefig(f"{alpha}_{beta}_{r}_{g}_{k1}_{k3}_{b}_{args.output_path}.png")
-        
-        with open(f"{alpha}_{beta}_{r}_{g}_{k1}_{k3}_{b}_{args.output_path}", 'w') as f:
+        with open(f"{alpha}_{beta}_{gamma}_{r}_{ir}_{g}_{k1}_{k3}_{b}_{self.output_path}", 'w') as f:
             f.write("query_id,retrieved_docs\n")
             for i in range(self.query_size):
                 relevant_num = filter_ids[i].sum()
@@ -284,18 +299,4 @@ class Retriever:
                 for j in range(len(filtered_docs)-1):
                     f.write(f"{self.doc_id_list[filtered_docs[j]]} ")
                 f.write(f"{self.doc_id_list[len(filtered_docs)-1]}\n")
-        print(f"{alpha}_{beta}_{r}_{g}_{k1}_{k3}_{b}_{args.output_path} saved!")
-
-
-if __name__ == "__main__":
-    start = time.time()
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-r", "--relevance", action="store_true")
-    parser.add_argument("-i", "--input_path", type=str)
-    parser.add_argument("-o", "--output_path", type=str)
-    parser.add_argument("-m", "--model_path", type=str)
-    parser.add_argument("-d", "--dir_path", type=str)
-    args = parser.parse_args()
-
-    retriever = Retriever(**vars(args))
-    print(f"Execution time: {time.time()-start} sec")
+        print(f"{alpha}_{beta}_{gamma}_{r}_{ir}_{g}_{k1}_{k3}_{b}_{self.output_path} saved!")
