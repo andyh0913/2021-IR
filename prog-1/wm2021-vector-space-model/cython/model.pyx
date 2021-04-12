@@ -7,7 +7,6 @@ from functools import reduce
 from itertools import compress, repeat
 import numpy as np
 cimport numpy as np
-from numpy cimport ndarray
 from tqdm import tqdm
 # import matplotlib.pyplot as plt
 
@@ -140,6 +139,9 @@ cdef class Retriever:
         for i in tqdm(range(self.doc_size)):
             self.doc_ids[i] = np.array(self.doc_ids[i])
             self.doc_tfs[i] = np.array(self.doc_tfs[i])
+            p = np.argsort(self.doc_ids[i])
+            self.doc_ids[i] = self.doc_ids[i][p]
+            self.doc_tfs[i] = self.doc_tfs[i][p]
             length = self.doc_tfs[i].sum()
             if length == 0:
                 self.doc_ids[i] = np.array([0])
@@ -174,10 +176,10 @@ cdef class Retriever:
     def pre_qtf(self, index):
         return (k3+1)*self.query_tfs[index]/(k3+self.query_tfs[index])
 
-    cdef cal_bm25_score(self,    ndarray[np.int_t, ndim=1] qids, \
-                                ndarray[np.float_t, ndim=1] qtfs, \
-                                ndarray[np.int_t, ndim=1] ids, \
-                                ndarray[np.float_t, ndim=1] tfs):
+    cdef cal_bm25_score(self,    np.ndarray[np.int_t, ndim=1] qids, \
+                                np.ndarray[np.float_t, ndim=1] qtfs, \
+                                np.ndarray[np.int_t, ndim=1] ids, \
+                                np.ndarray[np.float_t, ndim=1] tfs):
         cdef int p1=0, p2=0
         cdef int len1 = qids.shape[0], len2 = ids.shape[0]
         cdef double score = 0
@@ -262,7 +264,7 @@ cdef class Retriever:
                 # self.query_weight[i] = self.add_bow_list(self.query_weight[i], relevant_query, alpha, beta/relevant_num)
                 self.query_ids[i], self.query_tfs[i] = self.add_numpy_bow(self.query_ids[i], self.query_tfs[i]*alpha, relevant_query_ids, relevant_query_tfs*beta/relevant_num)
                 self.query_ids[i], self.query_tfs[i] = self.add_numpy_bow(self.query_ids[i], self.query_tfs[i], irrelevant_query_ids, -irrelevant_query_tfs*gamma/irrelevant_num)
-                threshold = np.sort(self.query_tfs[i])[::-1][:300][-1]
+                threshold = np.sort(self.query_tfs[i])[::-1][:200][-1]
                 p = self.query_tfs[i] >= threshold
                 self.query_ids[i] = self.query_ids[i][p]
                 self.query_tfs[i] = self.query_tfs[i][p]
