@@ -85,15 +85,10 @@ class Retriever:
         self.doc_title_tfs = []
         doc_length = []
         for i, file_path in enumerate(tqdm(file_list)):
-            doc_tree = ET.parse(os.path.join(dir_path, file_path.strip()))
-            doc = doc_tree.getroot().find('doc')
-            # text = doc.find('title').text or ""
-            # for p in doc.find('text').findall('p'):
-            #     text = text + p.text
-            # tokenized = self.tokenize(text)
-            # self.doc_list.append(tokenized)
-            # doc_length.append(len(tokenized))
-            self.doc_id_list.append(doc.find('id').text.lower())
+            # doc_tree = ET.parse(os.path.join(dir_path, file_path.strip()))
+            # doc = doc_tree.getroot().find('doc')
+            # self.doc_id_list.append(doc.find('id').text.lower())
+            self.doc_id_list.append(file_path.strip().split('/')[-1].lower())
         self.doc_size = len(self.doc_id_list)
         # self.doc_length = np.array(doc_length)
         print("Document list built!")
@@ -290,7 +285,7 @@ class Retriever:
         #     axs[i].bar(np.arange(100), sorted_score[i][:100])
         # plt.savefig(f"{alpha}_{beta}_{r}_{g}_{k1}_{k3}_{b}_{args.output_path}.png")
         
-        with open(f"{alpha}_{beta}_{gamma}_{r}_{ir}_{g}_{k1}_{k3}_{b}_{self.output_path}", 'w') as f:
+        with open(f"{self.output_path}", 'w') as f:
             f.write("query_id,retrieved_docs\n")
             for i in range(self.query_size):
                 relevant_num = filter_ids[i].sum()
@@ -299,4 +294,4 @@ class Retriever:
                 for j in range(len(filtered_docs)-1):
                     f.write(f"{self.doc_id_list[filtered_docs[j]]} ")
                 f.write(f"{self.doc_id_list[len(filtered_docs)-1]}\n")
-        print(f"{alpha}_{beta}_{gamma}_{r}_{ir}_{g}_{k1}_{k3}_{b}_{self.output_path} saved!")
+        print(f"{self.output_path} saved!")
