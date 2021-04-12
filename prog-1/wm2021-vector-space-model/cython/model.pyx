@@ -67,11 +67,8 @@ class Retriever:
             #         topic.find('question').text.strip() + \
             #         topic.find('narrative').text.strip() + \
             #         topic.find('concepts').text.strip()
-
             text =  topic.find('title').text.strip() + \
                     topic.find('concepts').text.strip()
-
-            # text = topic.find('concepts').text.strip()
 
             self.query_list.append(self.tokenize(text))
             self.query_id_list.append(number)
@@ -146,9 +143,6 @@ class Retriever:
         for i in tqdm(range(self.doc_size)):
             self.doc_ids[i] = np.array(self.doc_ids[i])
             self.doc_tfs[i] = np.array(self.doc_tfs[i])
-            p = self.doc_ids[i].argsort()
-            self.doc_ids[i] = self.doc_ids[i][p]
-            self.doc_tfs[i] = self.doc_tfs[i][p]
             length = self.doc_tfs[i].sum()
             if length == 0:
                 self.doc_ids[i] = np.array([0])
@@ -157,7 +151,6 @@ class Retriever:
             self.doc_length.append(length)
         self.doc_length = np.array(self.doc_length)
         self.avdl = self.doc_length.mean()
-        print("AVDL!!!!!!", self.avdl)
         self.doc_df = np.array(self.doc_df)
         print("Tfidf built!")
 
@@ -224,7 +217,6 @@ class Retriever:
         self.query_ids = []
         self.query_tfs = []
         for i in range(self.query_size):
-            query_tf[i][0] = 0
             p = query_tf[i] > self.eps
             self.query_ids.append(np.arange(len(p))[p])
             self.query_tfs.append(query_tf[i][p])
@@ -279,7 +271,6 @@ class Retriever:
         print("Calculating query scores...")
         self.precal_bm25_terms()
         for i in tqdm(range(self.query_size)):
-            # self.query_score[i] = np.array([self.cal_bm25_score(self.query_ids[i], self.query_tfs_bm25[i], self.doc_ids[doc], self.doc_tfs_bm25[doc]) for doc in tqdm(range(self.doc_size))])
             self.query_score[i] = np.fromiter(map(self.cal_bm25_score, repeat(self.query_ids[i]), repeat(self.query_tfs_bm25[i]), tqdm(self.doc_ids), self.doc_tfs_bm25,), dtype=float)
         sorted_score = np.sort(self.query_score, axis=-1)[:,::-1]
         self.result = np.argsort(self.query_score, axis=-1)[:,::-1]
