@@ -19,9 +19,9 @@ g = 100
 k1 = 2 # 1-2
 k3 = 100 # 0-1000
 b = 0.75 # 0.75
+tr = 200
 
-cdef class Retriever:
-    cdef dict __dict__
+class Retriever:
     def __init__(self, relevance, input_path, output_path, model_path, dir_path):
         self.eps = 1e-12
         self.relevance = relevance
@@ -176,7 +176,7 @@ cdef class Retriever:
     def pre_qtf(self, index):
         return (k3+1)*self.query_tfs[index]/(k3+self.query_tfs[index])
 
-    cdef cal_bm25_score(self,    np.ndarray[np.int_t, ndim=1] qids, \
+    def cal_bm25_score(self,    np.ndarray[np.int_t, ndim=1] qids, \
                                 np.ndarray[np.float_t, ndim=1] qtfs, \
                                 np.ndarray[np.int_t, ndim=1] ids, \
                                 np.ndarray[np.float_t, ndim=1] tfs):
@@ -264,7 +264,7 @@ cdef class Retriever:
                 # self.query_weight[i] = self.add_bow_list(self.query_weight[i], relevant_query, alpha, beta/relevant_num)
                 self.query_ids[i], self.query_tfs[i] = self.add_numpy_bow(self.query_ids[i], self.query_tfs[i]*alpha, relevant_query_ids, relevant_query_tfs*beta/relevant_num)
                 self.query_ids[i], self.query_tfs[i] = self.add_numpy_bow(self.query_ids[i], self.query_tfs[i], irrelevant_query_ids, -irrelevant_query_tfs*gamma/irrelevant_num)
-                threshold = np.sort(self.query_tfs[i])[::-1][:200][-1]
+                threshold = np.sort(self.query_tfs[i])[::-1][:tr][-1]
                 p = self.query_tfs[i] >= threshold
                 self.query_ids[i] = self.query_ids[i][p]
                 self.query_tfs[i] = self.query_tfs[i][p]
