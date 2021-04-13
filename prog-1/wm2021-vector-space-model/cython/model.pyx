@@ -28,7 +28,7 @@ class Retriever:
         self.output_path = output_path
         self.build_vocab(model_path) # Must be called first
         self.build_doc_list(model_path, dir_path)
-        self.build_stopword_list('model/stopwords')
+        self.build_stopword_list('stopwords')
         self.build_tfidf(model_path) # Must be called after build_doc_list
         self.build_query_list(input_path)
         self.build_query_tfidf() # Must be called after build_query_list & build_tfidf
